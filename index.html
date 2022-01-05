@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
+        integrity="sha512-xodZBNTC5n17Xt2atTPuE1HxjVMSvLVW9ocqUKLsCC5CXdbqCmblAshOMAS6/keqq/sMZMZ19scR4PsZChSR7A=="
+        crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"
+        integrity="sha512-XQoYMqMTK8LvdxXYG3nZ448hOEQiglfqkJs1NOQV44cWnUrBc8PkAOcXy20w0vlaXaVUearIOBhiXZ5V3ynxwA=="
+        crossorigin=""></script>
+    <title>TP leaflet</title>
+    <style>
+        #map {
+            width: 80%;
+            height: 90vh;
+            margin: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Carte des musiciens francophones</h1>
+
+    <div id="map"></div>
+
+    <section id="apropos">
+        <h2>A propos</h2>
+        <p>Les données cartographiées proviennent de Wikidata</p>
+    </section>
+
+
+    <script>
+        var map;
+
+        var redIcon = L.icon({
+            iconUrl: 'red_icon.png',
+
+            iconSize: [32, 32],
+            iconAnchor: [16, 32],
+            popupAnchor: [0, 0] 
+        });
+
+        // Création de la carte
+        map = L.map('map').setView([47, 5], 5);
+
+        L.tileLayer(
+            'https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token={accessToken}', {
+                attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
+                maxZoom: 18,
+                id: 'mapbox/streets-v11',
+                tileSize: 512,
+                zoomOffset: -1,
+                accessToken: 'pk.eyJ1IjoiZWxvcG4iLCJhIjoiY2t3dnRsNm5zMjNwcTJ3cDNjdjB1cWNldCJ9.tH301UpWotwarxl8l7w9HA'
+            }).addTo(map);
+
+            
+        // Données récupérées depuis Wikidata
+        class SPARQLQueryDispatcher {
+            constructor(endpoint) {
+                this.endpoint = endpoint;
+            }
+
+            query(sparqlQuery) {
+                const fullUrl = this.endpoint + '?query=' + encodeURIComponent(sparqlQuery);
+                const headers = {
+                    'Accept': 'application/sparql-results+json'
+                };
+
+                return fetch(fullUrl, {
+                    headers
+                }).then(body => body.json());
+            }
+        }
+
+        const endpointUrl = 'https://query.wikidata.org/sparql';
+        const sparqlQuery = `#Musiciens francophones avec leur pays de nationalité et lieu de naissance
+        #defaultView:ImageGrid
+        SELECT DISTINCT ?musicien ?musicienLabel ?coordNaissance (MIN(?photo) AS ?laphoto) (MIN(?dateNaissance) AS ?naissance) (YEAR(?naissance) AS ?anneeNaissance) (MIN(?dateMort) AS ?mort) (YEAR(?mort) AS ?anneeMort) ?linkcount ?lieuNaissance WHERE {
+        ?musicien wdt:P106 wd:Q639669;
+            wdt:P1412 wd:Q150;
+            wdt:P19 ?lieuNaissance;
+            wikibase:sitelinks ?linkcount;
+            wdt:P18 ?photo;
+            wdt:P569 ?dateNaissance;
+            wdt:P570 ?dateMort.
+        ?lieuNaissance wdt:P625 ?coordNaissance.
+     
+        SERVICE wikibase:label { bd:serviceParam wikibase:language "fr,en". }
+        }
+        GROUP BY ?musicien ?musicienLabel ?coordNaissance ?laphoto ?mort ?linkcount ?lieuNaissance
+        ORDER BY DESC (?linkcount)`;
+
+
+        const queryDispatcher = new SPARQLQueryDispatcher(endpointUrl);
+        queryDispatcher.query(sparqlQuery).then(function (data) {
+            data.results.bindings.forEach(function (element) {
+
+                // Récupération des valeurs de latitude et longitude du lieu de naissance de chaque musicien
+                let coord = element.coordNaissance.value.replace('Point(', '').replace(')', '');
+                let latitude = parseFloat(coord.split(' ')[0]);
+                let longitude = parseFloat(coord.split(' ')[1]);
+
+                // Affichage du marqueur corresondant aux coordonnées du lieu de naissance
+                L.marker([longitude, latitude], {
+                    icon: redIcon
+                }).bindPopup(element.musicienLabel.value).openPopup().addTo(map);
+            });
+        })
+    </script>
+</body>
+
+</html>
